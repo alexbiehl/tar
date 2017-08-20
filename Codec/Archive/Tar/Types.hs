@@ -55,6 +55,9 @@ module Codec.Archive.Tar.Types (
   foldlEntries,
   unfoldEntries,
 
+  ExtendedHeader,
+  ExtendedHeaderEntry(..)
+
 #ifdef TESTS
   limitToV7FormatCompat
 #endif
@@ -127,6 +130,8 @@ entryPath = fromTarPath . entryTarPath
 -- Portable archives should contain only 'NormalFile' and 'Directory'.
 --
 data EntryContent = NormalFile      LBS.ByteString {-# UNPACK #-} !FileSize
+                  | ExtendedHeader  !ExtendedHeader
+                  | GlobalExtendedHeader !ExtendedHeader
                   | Directory
                   | SymbolicLink    !LinkTarget
                   | HardLink        !LinkTarget
@@ -138,6 +143,12 @@ data EntryContent = NormalFile      LBS.ByteString {-# UNPACK #-} !FileSize
                   | OtherEntryType  {-# UNPACK #-} !TypeCode LBS.ByteString
                                     {-# UNPACK #-} !FileSize
     deriving (Eq, Ord, Show)
+
+data ExtendedHeaderEntry = ExtendedHeaderEntry {-# UNPACK #-} !BS.ByteString
+                                               {-# UNPACK #-} !BS.ByteString
+    deriving (Eq, Ord, Show)
+
+type ExtendedHeader = [ExtendedHeaderEntry]
 
 data Ownership = Ownership {
     -- | The owner user name. Should be set to @\"\"@ if unknown.
@@ -565,7 +576,7 @@ instance Arbitrary Entry where
       arbitraryEpochTime = fromIntegral <$> (arbitraryOctal 11 :: Gen Int64)
 
   shrink (Entry path content perms author time format) =
-      [ Entry path' content' perms author' time' format 
+      [ Entry path' content' perms author' time' format
       | (path', content', author', time') <-
          shrink (path, content, author, time) ]
    ++ [ Entry path content perms' author time format
@@ -626,7 +637,7 @@ instance Arbitrary EntryContent where
                return (OtherEntryType c bs (LBS.length bs)))
       ]
 
-  shrink (NormalFile bs _)   = [ NormalFile bs' (LBS.length bs') 
+  shrink (NormalFile bs _)   = [ NormalFile bs' (LBS.length bs')
                                | bs' <- shrink bs ]
   shrink  Directory          = []
   shrink (SymbolicLink link) = [ SymbolicLink link' | link' <- shrink link ]
@@ -636,7 +647,7 @@ instance Arbitrary EntryContent where
   shrink (BlockDevice     ma mi) = [ BlockDevice ma' mi'
                                    | (ma', mi') <- shrink (ma, mi) ]
   shrink  NamedPipe              = []
-  shrink (OtherEntryType c bs _) = [ OtherEntryType c bs' (LBS.length bs') 
+  shrink (OtherEntryType c bs _) = [ OtherEntryType c bs' (LBS.length bs')
                                    | bs' <- shrink bs ]
 
 instance Arbitrary LBS.ByteString where
@@ -694,4 +705,3 @@ limitToV7FormatCompat entry@Entry { entryFormat = V7Format } =
 limitToV7FormatCompat entry = entry
 
 #endif
-
